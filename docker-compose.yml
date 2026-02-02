@@ -1,0 +1,10 @@
+services:
+  wa-sticker-bot:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: wa-sticker-bot
+    volumes:
+      - ./.wwebjs_auth:/app/.wwebjs_auth
+      - ./temp:/app/temp
+    restart: unless-stopped
