@@ -1,10 +1,20 @@
+version: "3.9"
+
 services:
   wa-sticker-bot:
     build:
       context: .
       dockerfile: docker/Dockerfile
     container_name: wa-sticker-bot
+
     volumes:
       - ./.wwebjs_auth:/app/.wwebjs_auth
       - ./temp:/app/temp
+
     restart: unless-stopped
+
+    # adjust for vps
+    shm_size: "256m"
+
+    environment:
+      - NODE_ENV=production
