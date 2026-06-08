@@ -5,16 +5,20 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+
     container_name: wa-sticker-bot
+
+    restart: unless-stopped
+
+    shm_size: "512m"
+
+    environment:
+      NODE_ENV: production
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
 
     volumes:
       - ./.wwebjs_auth:/app/.wwebjs_auth
       - ./temp:/app/temp
 
-    restart: unless-stopped
-
-    # adjust for vps
-    shm_size: "256m"
-
-    environment:
-      - NODE_ENV=production
+    security_opt:
+      - seccomp:unconfined

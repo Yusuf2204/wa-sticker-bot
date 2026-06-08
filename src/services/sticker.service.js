@@ -28,14 +28,22 @@ async function createSticker(media) {
     // ===== VIDEO & GIF (ADAPTIVE) =====
     if (media.mimetype.startsWith('video/') || media.mimetype === 'image/gif') {
       for (const preset of VIDEO_PRESETS) {
-        await videoToWebp(input, output, preset);
+        const tempOutput = path.join(
+          config.paths.temp,
+          `${uuidv4()}.webp`
+        );
 
-        const sizeKB = fs.statSync(output).size / 1024;
+        await videoToWebp(input, tempOutput, preset);
+
+        const sizeKB = fs.statSync(tempOutput).size / 1024;
+
         if (sizeKB <= MAX_SIZE_KB) {
-          return output; 
+          return tempOutput;
         }
-      }
 
+        removeFile(tempOutput);
+      }
+      
       throw new Error('Video terlalu kompleks untuk dijadikan stiker');
     }
 

@@ -28,15 +28,21 @@ function videoToWebp(input, output, options = {}) {
         '-an',
         '-loop 0',
 
-        // COMPRESSION (ADAPTIVE)
+        // IMPORTANT: preserve alpha
+        '-pix_fmt yuva420p',
+
+        // Compression
         '-lossless 0',
         `-qscale ${qscale}`,
         `-compression_level ${compressionLevel}`,
 
-        // FILTER WA-FRIENDLY
-        `-vf scale=${config.sticker.video.size}:${config.sticker.video.size}:force_original_aspect_ratio=decrease,` +
+        // WhatsApp-safe filter
+        `-vf ` +
+        `fps=${fps},` +
+        `scale=${config.sticker.video.size}:${config.sticker.video.size}:force_original_aspect_ratio=decrease,` +
         `pad=${config.sticker.video.size}:${config.sticker.video.size}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,` +
-        `fps=${fps},setsar=1`,
+        `format=rgba,` +
+        `setsar=1`,
 
         `-t ${config.sticker.video.maxDuration}`
       ])

@@ -5,9 +5,20 @@ const logger = require('../utils/logger.util');
 function initWhatsApp() {
   const client = new Client({
     authStrategy: new LocalAuth(),
+
     puppeteer: {
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+
+      executablePath:
+        process.env.PUPPETEER_EXECUTABLE_PATH,
+
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-first-run'
+      ]
     }
   });
 
@@ -18,6 +29,14 @@ function initWhatsApp() {
 
   client.on('ready', () => {
     logger.info('WhatsApp client ready');
+  });
+
+  client.on('auth_failure', msg => {
+    logger.error(`AUTH FAILED: ${msg}`);
+  });
+
+  client.on('disconnected', reason => {
+    logger.warn(`DISCONNECTED: ${reason}`);
   });
 
   return client;

@@ -27,14 +27,17 @@ RUN apt-get update && apt-get install -y \
   libpango-1.0-0 \
   libpangocairo-1.0-0 \
   libcairo2 \
+  dumb-init \
   --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
+
 # =========================
-# ENV FOR PUPPETEER
+# PUPPETEER ENV
 # =========================
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV NODE_ENV=production
 
 # =========================
 # WORKDIR
@@ -45,7 +48,7 @@ WORKDIR /app
 # INSTALL DEPENDENCIES
 # =========================
 COPY package*.json ./
-RUN npm install --production
+RUN npm ci --omit=dev
 
 # =========================
 # COPY SOURCE
@@ -56,4 +59,6 @@ COPY temp ./temp
 # =========================
 # RUNTIME
 # =========================
+ENTRYPOINT ["dumb-init", "--"]
+
 CMD ["npm", "start"]
