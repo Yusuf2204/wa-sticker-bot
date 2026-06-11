@@ -31,12 +31,22 @@ function initWhatsApp() {
     logger.info('WhatsApp client ready');
   });
 
+  client.on('authenticated', () => {
+    console.log('✅ Berhasil diautentikasi');
+  });
+
   client.on('auth_failure', msg => {
     logger.error(`AUTH FAILED: ${msg}`);
   });
 
-  client.on('disconnected', reason => {
+  client.on('disconnected', (reason) => {
     logger.warn(`DISCONNECTED: ${reason}`);
+    // Jangan auto-restart di sini karena bisa loop
+    console.log('Bot terputus. Restart manual jika perlu.');
+  });
+
+  client.on('error', (err) => {
+    logger.error(`Client error: ${err.message}`);
   });
 
   return client;
