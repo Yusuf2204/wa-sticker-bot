@@ -2,7 +2,7 @@
 
 WhatsApp Sticker Bot built with **Node.js**, **whatsapp-web.js**, **FFmpeg**, and **Docker**.
 
-Convert **image**, **GIF**, and **video** into WhatsApp stickers automatically with adaptive compression and WhatsApp-friendly optimization.
+Convert **image**, **GIF**, and **video** into WhatsApp stickers automatically with adaptive compression, queue management, and WhatsApp-friendly optimization.
 
 ---
 
@@ -15,6 +15,11 @@ Convert **image**, **GIF**, and **video** into WhatsApp stickers automatically w
 * ✅ Auto resize (`512x512`)
 * ✅ Transparency preserved
 * ✅ Reply / quoted media support
+* ✅ Queue system (`p-queue`)
+* ✅ Concurrent processing (`10 jobs`)
+* ✅ Rate limit (`10 sticker/minute per user`)
+* ✅ Queue position notification
+* ✅ Remaining quota notification
 * ✅ Docker ready
 * ✅ Session persistence with LocalAuth
 
@@ -26,6 +31,7 @@ Convert **image**, **GIF**, and **video** into WhatsApp stickers automatically w
 * **whatsapp-web.js**
 * **Puppeteer / Chromium**
 * **FFmpeg**
+* **PQueue**
 * **Docker & Docker Compose**
 
 ---
@@ -95,6 +101,60 @@ Optimizations include:
 
 ---
 
+## Queue System
+
+Sticker generation is processed through a queue system to prevent FFmpeg process collision and server overload.
+
+```text
+Incoming Request
+↓
+Queue
+↓
+Sticker Processing
+↓
+Response
+```
+
+### Queue Features
+
+* Concurrent processing (`10 jobs`)
+* Safe FFmpeg execution
+* Queue position notification
+* Prevent process collision
+
+Example notification:
+
+```text
+⏳ Queue detected
+Your request is in position #3
+```
+
+---
+
+## Rate Limiting
+
+To prevent spam and resource abuse, users are limited to:
+
+```text
+10 sticker / minute / user
+```
+
+Features:
+
+* Auto reset every minute
+* Remaining quota notification
+* Spam prevention
+* Fair resource usage
+
+Example notification:
+
+```text
+⚠️ Rate limit reached
+Please wait before creating more stickers.
+```
+
+---
+
 ## Project Structure
 
 ```text
@@ -112,6 +172,8 @@ Optimizations include:
 │   │   └── message.handler.js
 │   ├── services
 │   │   ├── ffmpeg.service.js
+│   │   ├── queue.service.js
+│   │   ├── rateLimit.service.js
 │   │   └── sticker.service.js
 │   ├── utils
 │   │   ├── cleanup.util.js
@@ -130,14 +192,14 @@ Optimizations include:
 
 ## Installation (Local)
 
-### 1. Clone repository
+### 1. Clone Repository
 
 ```bash
-git clone "https://github.com/Yusuf2204/wa-sticker-bot.git"
+git clone https://github.com/Yusuf2204/wa-sticker-bot.git
 cd wa-sticker-bot
 ```
 
-### 2. Install dependencies
+### 2. Install Dependencies
 
 ```bash
 npm install
@@ -159,7 +221,7 @@ which chromium-browser
 ffmpeg -version
 ```
 
-### 4. Set Chromium path (optional)
+### 4. Set Chromium Path (Optional)
 
 If needed:
 
@@ -167,7 +229,7 @@ If needed:
 export PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ```
 
-### 5. Run bot
+### 5. Run Bot
 
 ```bash
 npm start
@@ -234,6 +296,8 @@ You can configure:
 * Sticker size
 * FPS
 * Max video duration
+* Queue concurrency
+* Rate limit policy
 
 ---
 
@@ -258,7 +322,7 @@ This prevents repeated QR login after container restart.
 
 ## Troubleshooting
 
-### Chromium not found
+### Chromium Not Found
 
 Error:
 
@@ -280,7 +344,7 @@ export PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 ---
 
-### Profile locked
+### Profile Locked
 
 Error:
 
@@ -304,7 +368,7 @@ find .wwebjs_auth -name "Singleton*" -delete
 
 ---
 
-### Sticker background becomes black
+### Sticker Background Becomes Black
 
 Issue:
 
@@ -335,6 +399,52 @@ docker compose up --build
 ```
 
 ---
+
+## Engineering Highlights
+
+This project was built not only as a WhatsApp sticker bot, but also as an exercise in building a small production-minded media processing system.
+
+Technical challenges solved in this project include:
+
+### Media Processing
+
+* Image → WebP sticker conversion
+* GIF / Video → Animated WebP sticker conversion
+* FFmpeg optimization for WhatsApp compatibility
+* Adaptive compression to stay under WhatsApp sticker limits
+* Transparent background preservation (alpha-safe processing)
+
+### Reliability & Stability
+
+* Queue system using **PQueue** to prevent FFmpeg process collision
+* Concurrent sticker processing (`10 jobs`)
+* Rate limiting (`10 requests/minute per user`)
+* Persistent WhatsApp authentication using `LocalAuth`
+* Dockerized environment for reproducible deployment
+
+### User Experience
+
+* Reply-based sticker generation
+* Queue position notification
+* Remaining quota notification
+* Clear error handling and feedback
+
+### Technologies Practiced
+
+```text
+Node.js
+whatsapp-web.js
+FFmpeg
+Puppeteer
+Docker
+Queueing
+Rate Limiting
+Concurrency Handling
+Media Processing
+System Design
+```
+
+This project focuses on building a reliable, maintainable, and production-ready WhatsApp automation workflow.
 
 ## License
 
