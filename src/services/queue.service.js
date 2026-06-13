@@ -5,9 +5,11 @@ const PQueue = require('p-queue').default;
 class QueueService {
   constructor() {
     this.queue = new PQueue({
-      concurrency: 10,        // 10 request bersamaan
-      timeout: 30000,         // 30 detik timeout per task
-      throwOnTimeout: true
+      concurrency: 5,
+      // 2 menit untuk video processing
+      timeout: 120000,
+      // biarkan task selesai jika sedikit lewat
+      throwOnTimeout: false
     });
     
     this.stats = {
