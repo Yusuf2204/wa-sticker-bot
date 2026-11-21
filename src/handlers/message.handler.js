@@ -1,5 +1,6 @@
 const { parseCommand } = require('../utils/command.util');
 const logger = require('../utils/logger.util');
+const config = require('../config/bot.config');
 const queueService = require('../services/queue.service');
 const rateLimitService = require('../services/rateLimit.service');
 
@@ -27,11 +28,11 @@ async function handleMessage({ msg, client }) {
 
   // ===== KHUSUS UNTUK COMMAND STICKER SAJA =====
   if (cmd.name === 'sticker') {
-    await handleStickerCommand({ msg, client, command });
+    await handleStickerCommand({ msg, client, command, args: cmd.args });
   } else {
     // Command lain (help, dll) langsung dieksekusi tanpa rate limit & queue
     try {
-      await command.execute({ msg, client });
+      await command.execute({ msg, client, args: cmd.args });
     } catch (err) {
       logger.error(err);
       msg.reply('❌ Terjadi kesalahan saat memproses perintah');
@@ -40,10 +41,11 @@ async function handleMessage({ msg, client }) {
 }
 
 // Fungsi terpisah untuk handle sticker dengan rate limit & queue
-async function handleStickerCommand({ msg, client, command }) {
+async function handleStickerCommand({ msg, client, command, args }) {
   // ===== RATE LIMIT CHECK =====
   const userId = msg.from;
   const rateLimit = rateLimitService.check(userId);
+  const maxLimit = config.rateLimit?.maxRequests || 5;
   
   if (!rateLimit.allowed) {
     const status = rateLimitService.getStatus(userId);
@@ -51,7 +53,7 @@ async function handleStickerCommand({ msg, client, command }) {
       `⚠️ *Rate Limit Exceeded*\n\n` +
       `Kamu sudah membuat ${status.totalUsed} stiker dalam 1 menit.\n` +
       `Mohon tunggu *${rateLimit.resetInSeconds} detik* lagi sebelum mencoba kembali.\n\n` +
-      `Limit: *10 sticker/menit/user*`
+      `Limit: *${maxLimit} sticker/menit/user*`
     );
   }
 
@@ -71,16 +73,25 @@ async function handleStickerCommand({ msg, client, command }) {
       queueMessage += `_Bisa memakan waktu beberapa detik._`;
     }
     
-    const statusMsg = await msg.reply(queueMessage);
+    let statusMsg = null;
+    try {
+      statusMsg = await msg.reply(queueMessage);
+    } catch (err) {
+      logger.warn(`Could not send queue status message: ${err.message}`);
+    }
     
     // Tambahkan ke queue
     await queueService.add(async () => {
       try {
-        await command.execute({ msg, client });
+        await command.execute({ msg, client, args });
         
-        // Update status message
+        // Update status message safely
         if (statusMsg) {
-          await statusMsg.delete(true);
+          try {
+            await statusMsg.delete(true);
+          } catch (_) {
+            // Abaikan jika bot bukan admin di grup atau pesan sudah tidak bisa dihapus
+          }
         }
         
         // Show remaining quota (optional, bisa dihapus jika dianggap spam)
@@ -89,21 +100,23 @@ async function handleStickerCommand({ msg, client, command }) {
           // Hanya tampilkan setiap 3 sticker, tidak setiap kali
           await msg.reply(
             `✅ *Stiker berhasil dibuat!*\n\n` +
-            `Sisa kuota: *${remaining.remaining}* dari 10 sticker/menit`
+            `Sisa kuota: *${remaining.remaining}* dari ${maxLimit} sticker/menit`
           );
         } else if (remaining.remaining === 1) {
           // Peringatan terakhir
           await msg.reply(
             `⚠️ *Peringatan!*\n\n` +
-            `Ini adalah stiker terakhir dari kuota 10 sticker/menit.\n` +
+            `Ini adalah stiker terakhir dari kuota ${maxLimit} sticker/menit.\n` +
             `Silakan tunggu 1 menit untuk melanjutkan.`
           );
         }
         
       } catch (error) {
-        // Update status message on error
+        // Update status message on error safely
         if (statusMsg) {
-          await statusMsg.delete(true);
+          try {
+            await statusMsg.delete(true);
+          } catch (_) {}
         }
         throw error;
       }

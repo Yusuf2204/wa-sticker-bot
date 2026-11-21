@@ -1,7 +1,7 @@
 # =========================
-# BASE IMAGE (NODE SAMA)
+# BASE IMAGE (NODE BOOKWORM)
 # =========================
-FROM node:18.20.8-bullseye
+FROM node:18-bookworm
 
 # =========================
 # SYSTEM DEPENDENCIES

@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   wa-sticker-bot:
     build:
@@ -20,5 +18,13 @@ services:
       - ./.wwebjs_auth:/app/.wwebjs_auth
       - ./temp:/app/temp
 
-    security_opt:
-      - seccomp:unconfined
+    mem_limit: 1536m
+    memswap_limit: 2048m
+    cpus: 1.5
+    pids_limit: 250
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

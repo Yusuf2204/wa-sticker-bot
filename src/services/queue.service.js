@@ -1,13 +1,14 @@
 const logger = require('../utils/logger.util');
+const config = require('../config/bot.config');
 
 const PQueue = require('p-queue').default;
 
 class QueueService {
   constructor() {
     this.queue = new PQueue({
-      concurrency: 5,
+      concurrency: config.queue?.concurrency || 2,
       // 2 menit untuk video processing
-      timeout: 120000,
+      timeout: config.queue?.timeout || 120000,
       // biarkan task selesai jika sedikit lewat
       throwOnTimeout: false
     });

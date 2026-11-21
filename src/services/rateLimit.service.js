@@ -1,11 +1,12 @@
 const logger = require('../utils/logger.util');
+const config = require('../config/bot.config');
 
 class RateLimitService {
   constructor() {
     // Format: Map { userId: { count, resetTime, timestamps } }
     this.limits = new Map();
-    this.maxRequests = 5;      // 5 sticker per menit
-    this.windowMs = 60000;      // 1 menit
+    this.maxRequests = config.rateLimit?.maxRequests || 5;
+    this.windowMs = config.rateLimit?.windowMs || 60000;
   }
 
   /**
