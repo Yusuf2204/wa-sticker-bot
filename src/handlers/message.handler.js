@@ -17,7 +17,12 @@ async function handleMessage({ msg, client }) {
     from: msg.from,
     body: msg.body,
     hasMedia: msg.hasMedia,
-    type: msg.type
+    hasQuotedMsg: msg.hasQuotedMsg,
+    type: msg.type,
+    rawType: msg._data?.type,
+    mimetype: msg._data?.mimetype,
+    directPath: Boolean(msg._data?.directPath),
+    quoted: Boolean(msg._data?.quotedMsg)
   });
 
   const cmd = parseCommand(msg.body);
