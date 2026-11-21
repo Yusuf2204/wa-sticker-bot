@@ -49,6 +49,8 @@ WORKDIR /app
 # =========================
 COPY package*.json ./
 RUN npm ci --omit=dev
+COPY docker/patch-wwebjs.sh ./
+RUN ./patch-wwebjs.sh && rm patch-wwebjs.sh
 
 # =========================
 # COPY SOURCE
