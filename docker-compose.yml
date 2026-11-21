@@ -17,6 +17,7 @@ services:
     volumes:
       - ./.wwebjs_auth:/app/.wwebjs_auth
       - ./temp:/app/temp
+      - ./src:/app/src
 
     mem_limit: 1536m
     memswap_limit: 2048m
