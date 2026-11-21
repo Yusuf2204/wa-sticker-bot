@@ -12,7 +12,7 @@ if (fs.existsSync(storeFile)) {
   console.log('[PATCH] Store.js patched successfully');
 }
 
-// 2. Patch Message.js for robust downloadMedia & ID serialization
+// 2. Patch Message.js for bulletproof downloadMedia & ID serialization
 const msgFile = '/app/node_modules/whatsapp-web.js/src/structures/Message.js';
 if (fs.existsSync(msgFile)) {
   let content = fs.readFileSync(msgFile, 'utf8');
@@ -28,32 +28,52 @@ if (fs.existsSync(msgFile)) {
     content = content.replace(targetCtor, replacementCtor);
   }
 
-  // Replace downloadMedia implementation with robust version
+  // Replace downloadMedia implementation with bulletproof fallback version
   const oldDownloadMediaRegex = /async downloadMedia\(\) \{[\s\S]*?return new MessageMedia\(result\.mimetype, result\.data, result\.filename, result\.filesize\);[\s\S]*?\}/;
   
-  const robustDownloadMedia = `async downloadMedia() {
+  const bulletproofDownloadMedia = `async downloadMedia() {
         if (!this.hasMedia) {
             return undefined;
         }
 
         const targetId = (this.id && (this.id._serialized || this.id['$1'])) || (typeof this.id === 'string' ? this.id : null);
+        const rawMediaData = {
+            directPath: this.directPath || this._data?.directPath,
+            encFilehash: this.encFilehash || this._data?.encFilehash,
+            filehash: this.filehash || this._data?.filehash,
+            mediaKey: this.mediaKey || this._data?.mediaKey,
+            mediaKeyTimestamp: this.mediaKeyTimestamp || this._data?.mediaKeyTimestamp,
+            type: this.type || this._data?.type,
+            mimetype: this.mimetype || this._data?.mimetype,
+            size: this.filesize || this._data?.size
+        };
 
-        const result = await this.client.pupPage.evaluate(async (msgId) => {
-            const msg = window.Store.Msg.get(msgId) || (await window.Store.Msg.getMessagesById([msgId]))?.messages?.[0];
-            if (!msg) {
-                console.log('[DEBUG downloadMedia] Msg not found for id:', msgId);
-                return null;
+        const result = await this.client.pupPage.evaluate(async (msgId, raw) => {
+            let msg = null;
+            if (msgId) {
+                try {
+                    msg = window.Store.Msg.get(msgId);
+                    if (!msg) {
+                        const fetched = await window.Store.Msg.getMessagesById([msgId]).catch(() => null);
+                        msg = fetched?.messages?.[0];
+                    }
+                } catch (e) {
+                    // Ignore Msg store lookup error
+                }
             }
 
-            if (msg.mediaData && msg.mediaData.mediaStage !== 'RESOLVED') {
-                try {
-                    await msg.downloadMedia({
-                        downloadEvenIfExpensive: true,
-                        rmrReason: 1
-                    });
-                } catch (e) {
-                    console.log('[DEBUG downloadMedia] msg.downloadMedia error ignored:', e?.message || e);
-                }
+            const directPath = msg?.directPath || raw.directPath;
+            const encFilehash = msg?.encFilehash || raw.encFilehash;
+            const filehash = msg?.filehash || raw.filehash;
+            const mediaKey = msg?.mediaKey || raw.mediaKey;
+            const mediaKeyTimestamp = msg?.mediaKeyTimestamp || raw.mediaKeyTimestamp;
+            const type = msg?.type || raw.type;
+            const mimetype = msg?.mimetype || raw.mimetype;
+            const size = msg?.size || raw.size;
+
+            if (!directPath || !mediaKey) {
+                console.log('[DEBUG downloadMedia] Missing directPath or mediaKey:', { directPath: Boolean(directPath), mediaKey: Boolean(mediaKey) });
+                return null;
             }
 
             try {
@@ -62,12 +82,12 @@ if (fs.existsSync(msgFile)) {
                     addPoint: function() { return this; }
                 };
                 const decryptedMedia = await window.Store.DownloadManager.downloadAndMaybeDecrypt({
-                    directPath: msg.directPath,
-                    encFilehash: msg.encFilehash,
-                    filehash: msg.filehash,
-                    mediaKey: msg.mediaKey,
-                    mediaKeyTimestamp: msg.mediaKeyTimestamp,
-                    type: msg.type,
+                    directPath,
+                    encFilehash,
+                    filehash,
+                    mediaKey,
+                    mediaKeyTimestamp,
+                    type,
                     signal: (new AbortController).signal,
                     downloadQpl: mockQpl
                 });
@@ -76,25 +96,24 @@ if (fs.existsSync(msgFile)) {
 
                 return {
                     data,
-                    mimetype: msg.mimetype,
-                    filename: msg.filename,
-                    filesize: msg.size
+                    mimetype: mimetype || 'application/octet-stream',
+                    filename: msg?.filename || 'media',
+                    filesize: size
                 };
             } catch (e) {
                 console.error('[DEBUG downloadMedia] downloadAndMaybeDecrypt failed:', e);
-                if (e && e.status === 404) return undefined;
-                throw e;
+                return null;
             }
-        }, targetId);
+        }, targetId, rawMediaData);
 
-        if (!result) return undefined;
+        if (!result || !result.data) return undefined;
         return new MessageMedia(result.mimetype, result.data, result.filename, result.filesize);
     }`;
 
   if (oldDownloadMediaRegex.test(content)) {
-    content = content.replace(oldDownloadMediaRegex, robustDownloadMedia);
+    content = content.replace(oldDownloadMediaRegex, bulletproofDownloadMedia);
     fs.writeFileSync(msgFile, content, 'utf8');
-    console.log('[PATCH] Message.js downloadMedia replaced with robust version');
+    console.log('[PATCH] Message.js downloadMedia replaced with bulletproof version');
   } else {
     console.warn('[PATCH] Could not match old downloadMedia in Message.js');
   }
