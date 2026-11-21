@@ -48,9 +48,7 @@ WORKDIR /app
 # INSTALL DEPENDENCIES
 # =========================
 COPY package*.json ./
-RUN npm ci --omit=dev
-COPY docker/patch-wwebjs.js ./
-RUN node patch-wwebjs.js && rm patch-wwebjs.js
+RUN npm install --omit=dev
 
 # =========================
 # COPY SOURCE
