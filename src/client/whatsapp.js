@@ -1,6 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const logger = require('../utils/logger.util');
+const { patchUtilsOnDisk, injectBrowserPatch } = require('../utils/patch.util');
 const fs = require('fs');
 const path = require('path');
 
@@ -20,6 +21,7 @@ function cleanupSingletonLocks() {
 
 function initWhatsApp() {
   cleanupSingletonLocks();
+  patchUtilsOnDisk();
 
   const client = new Client({
     authStrategy: new LocalAuth(),
@@ -55,8 +57,9 @@ function initWhatsApp() {
     console.log(`[STATE] ${state}`);
   });
 
-  client.on('ready', () => {
+  client.on('ready', async () => {
     logger.info('WhatsApp client ready');
+    await injectBrowserPatch(client);
   });
 
   client.on('authenticated', () => {
