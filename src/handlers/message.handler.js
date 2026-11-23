@@ -8,6 +8,7 @@ const sticker = require('../commands/sticker');
 const help = require('../commands/help');
 const ig = require('../commands/ig');
 const tw = require('../commands/tw');
+const tt = require('../commands/tt');
 
 const COMMANDS = {
   sticker,
@@ -16,7 +17,9 @@ const COMMANDS = {
   instagram: ig,
   tw,
   twitter: tw,
-  x: tw
+  x: tw,
+  tt,
+  tiktok: tt
 };
 
 async function handleMessage({ msg, client }) {

@@ -17,6 +17,9 @@ const USER_AGENT =
 const TWITTER_REGEX =
   /https?:\/\/(?:(?:www|mobile)\.)?(?:twitter\.com|x\.com)\/(?:#!\/)?([a-zA-Z0-9_]+)\/status\/([0-9]+)/i;
 
+const TIKTOK_REGEX =
+  /https?:\/\/(?:(?:www|m|vt|vm|t)\.)?tiktok\.com\/[^\s]+/i;
+
 /**
  * Download file from URL to disk
  */
@@ -606,7 +609,309 @@ async function downloadTwitterVideo(targetUrl) {
   );
 }
 
+/**
+ * Engine 1: SSSTik Scraper
+ * Mendukung video tanpa watermark dan slide foto TikTok
+ */
+async function trySSSTik(targetUrl) {
+  logger.info(`[DOWNLOADER][SSSTik] Scraping: ${targetUrl}`);
+
+  const resHome = await fetch('https://ssstik.io/en-1', {
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    }
+  });
+
+  if (!resHome.ok) {
+    throw new Error(`SSSTik home HTTP ${resHome.status}`);
+  }
+
+  const cookie = resHome.headers.get('set-cookie') || '';
+  const homeHtml = await resHome.text();
+
+  const ttMatch = homeHtml.match(/s_tt\s*=\s*['"]([^'"]+)['"]/);
+  const tt = ttMatch ? ttMatch[1] : '';
+
+  const postUrl = 'https://ssstik.io/abc?url=dl';
+  const bodyParams = new URLSearchParams({
+    id: targetUrl,
+    locale: 'en',
+    tt
+  });
+
+  const resPost = await fetch(postUrl, {
+    method: 'POST',
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'HX-Request': 'true',
+      'HX-Target': 'target',
+      'HX-Current-URL': 'https://ssstik.io/en-1',
+      'Cookie': cookie,
+      'Referer': 'https://ssstik.io/en-1'
+    },
+    body: bodyParams
+  });
+
+  if (!resPost.ok) {
+    throw new Error(`SSSTik post HTTP ${resPost.status}`);
+  }
+
+  const resultHtml = await resPost.text();
+
+  // 1. Cek apakah ini slideshow gambar / slide foto
+  const imageMatches = [];
+  const splideMatch = resultHtml.match(/<ul class="splide__list">([\s\S]*?)<\/ul>/i);
+  if (splideMatch) {
+    const slideItems = splideMatch[1].split(/<\/li>/i);
+    for (const slide of slideItems) {
+      const hrefMatch = slide.match(/href="([^"]+)"/i) || slide.match(/src="([^"]+)"/i);
+      if (hrefMatch && hrefMatch[1].startsWith('http')) {
+        imageMatches.push({
+          url: hrefMatch[1],
+          type: 'image',
+          ext: 'jpg'
+        });
+      }
+    }
+  }
+
+  if (imageMatches.length > 0) {
+    logger.info(`[DOWNLOADER][SSSTik] Found ${imageMatches.length} slide image(s)`);
+    return imageMatches;
+  }
+
+  // 2. Cek apakah ini video (Without watermark)
+  const videoRegex = /<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+  let m;
+  let videoUrl = null;
+  while ((m = videoRegex.exec(resultHtml)) !== null) {
+    const href = m[1];
+    const text = m[2].replace(/<[^>]+>/g, '').trim().toLowerCase();
+    if (
+      href.startsWith('http') &&
+      (text.includes('without watermark') ||
+        text.includes('tanpa tanda air') ||
+        href.includes('tikcdn.io'))
+    ) {
+      videoUrl = href;
+      break;
+    }
+  }
+
+  if (videoUrl) {
+    return [
+      {
+        url: videoUrl,
+        type: 'video',
+        ext: 'mp4'
+      }
+    ];
+  }
+
+  throw new Error('SSSTik: Link unduhan video tidak ditemukan');
+}
+
+/**
+ * Engine 2: MusicalDown Scraper
+ */
+async function tryMusicalDown(targetUrl) {
+  logger.info(`[DOWNLOADER][MusicalDown] Scraping: ${targetUrl}`);
+
+  const resHome = await fetch('https://musicaldown.com/en', {
+    headers: { 'User-Agent': USER_AGENT }
+  });
+
+  if (!resHome.ok) {
+    throw new Error(`MusicalDown home HTTP ${resHome.status}`);
+  }
+
+  const cookie = resHome.headers.get('set-cookie') || '';
+  const homeHtml = await resHome.text();
+
+  const urlInputName =
+    homeHtml.match(/<input[^>]+id="link_url"[^>]+name="([^"]+)"/)?.[1] ||
+    homeHtml.match(/<input[^>]+name="([^"]+)"[^>]+id="link_url"/)?.[1];
+  const tokenMatch = homeHtml.match(/<input[^>]+name="([^"]+)"[^>]+type="hidden"[^>]+value="([^"]+)"/);
+
+  if (!urlInputName || !tokenMatch) {
+    throw new Error('MusicalDown input tokens not found');
+  }
+
+  const params = new URLSearchParams();
+  params.append(urlInputName, targetUrl);
+  params.append(tokenMatch[1], tokenMatch[2]);
+  params.append('verify', '1');
+
+  const resPost = await fetch('https://musicaldown.com/download', {
+    method: 'POST',
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': cookie,
+      'Origin': 'https://musicaldown.com',
+      'Referer': 'https://musicaldown.com/en'
+    },
+    body: params
+  });
+
+  if (!resPost.ok) {
+    throw new Error(`MusicalDown post HTTP ${resPost.status}`);
+  }
+
+  const postHtml = await resPost.text();
+
+  // Cari link video MP4 (No Watermark)
+  const regex = /<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+  let m;
+  let videoUrl = null;
+  while ((m = regex.exec(postHtml)) !== null) {
+    const href = m[1];
+    const text = m[2].replace(/<[^>]+>/g, '').trim().toLowerCase();
+    if (
+      href.startsWith('http') &&
+      (text.includes('download mp4 [hd]') ||
+        text.includes('download mp4') ||
+        text.includes('nowatermark'))
+    ) {
+      if (!text.includes('watermark]') && !text.includes('with watermark')) {
+        videoUrl = href;
+        break;
+      }
+    }
+  }
+
+  if (videoUrl) {
+    return [
+      {
+        url: videoUrl,
+        type: 'video',
+        ext: 'mp4'
+      }
+    ];
+  }
+
+  throw new Error('MusicalDown: Link unduhan video tidak ditemukan');
+}
+
+/**
+ * Main Download Function for TikTok
+ */
+async function downloadTikTok(targetUrl) {
+  const match = targetUrl.match(TIKTOK_REGEX);
+  if (!match) {
+    throw new Error('Link TikTok tidak valid. Pastikan link mengarah ke postingan video atau foto TikTok.');
+  }
+
+  const cleanUrl = match[0].replace(/[?&]a=.*$/, '');
+
+  const tempDir = path.resolve(__dirname, '../../', config.paths?.temp || 'temp');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+
+  const fileId = uuidv4();
+  const outputBase = path.join(tempDir, `tt_${fileId}`);
+
+  let lastError = null;
+
+  // 1. Coba Engine 1 (SSSTik)
+  try {
+    const mediaUrls = await trySSSTik(cleanUrl);
+    const downloadedItems = [];
+    const limit = Math.min(mediaUrls.length, 10);
+
+    for (let i = 0; i < limit; i++) {
+      const media = mediaUrls[i];
+      const destPath = `${outputBase}_${i + 1}.${media.ext}`;
+      await downloadToFile(media.url, destPath, 'https://ssstik.io/');
+
+      let finalPath = destPath;
+      if (media.type === 'video') {
+        finalPath = await ensureVideoUnderLimit(destPath);
+      }
+
+      downloadedItems.push({
+        filePath: finalPath,
+        type: media.type,
+        ext: media.ext
+      });
+    }
+
+    return {
+      items: downloadedItems,
+      filePath: downloadedItems[0].filePath,
+      type: downloadedItems[0].type,
+      ext: downloadedItems[0].ext
+    };
+  } catch (err) {
+    logger.warn(`[DOWNLOADER] Engine 1 (SSSTik) failed: ${err.message}`);
+    lastError = err;
+  }
+
+  // 2. Coba Engine 2 (MusicalDown)
+  try {
+    const mediaUrls = await tryMusicalDown(cleanUrl);
+    const downloadedItems = [];
+    const limit = Math.min(mediaUrls.length, 10);
+
+    for (let i = 0; i < limit; i++) {
+      const media = mediaUrls[i];
+      const destPath = `${outputBase}_${i + 1}.${media.ext}`;
+      await downloadToFile(media.url, destPath, 'https://musicaldown.com/');
+
+      let finalPath = destPath;
+      if (media.type === 'video') {
+        finalPath = await ensureVideoUnderLimit(destPath);
+      }
+
+      downloadedItems.push({
+        filePath: finalPath,
+        type: media.type,
+        ext: media.ext
+      });
+    }
+
+    return {
+      items: downloadedItems,
+      filePath: downloadedItems[0].filePath,
+      type: downloadedItems[0].type,
+      ext: downloadedItems[0].ext
+    };
+  } catch (err) {
+    logger.warn(`[DOWNLOADER] Engine 2 (MusicalDown) failed: ${err.message}`);
+    lastError = err;
+  }
+
+  // 3. Coba Engine 3 (yt-dlp)
+  try {
+    const items = await tryYtDlp(cleanUrl, outputBase);
+    for (const item of items) {
+      if (item.type === 'video') {
+        item.filePath = await ensureVideoUnderLimit(item.filePath);
+      }
+    }
+    return {
+      items,
+      filePath: items[0].filePath,
+      type: items[0].type,
+      ext: items[0].ext
+    };
+  } catch (err) {
+    logger.warn(`[DOWNLOADER] Engine 3 (yt-dlp) failed: ${err.message}`);
+    lastError = err;
+  }
+
+  throw new Error(
+    `Gagal mengunduh media dari TikTok.\n` +
+    `Kemungkinan video bersifat privat atau dibatasi hak cipta.\n` +
+    `_Detail error:_ ${lastError ? lastError.message : 'Unknown'}`
+  );
+}
+
 module.exports = {
   downloadInstagram,
-  downloadTwitterVideo
+  downloadTwitterVideo,
+  downloadTikTok
 };
