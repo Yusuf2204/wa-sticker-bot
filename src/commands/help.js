@@ -11,6 +11,8 @@ module.exports = {
       `  _Kustom nama: \`${p}sticker Paket | Pembuat\`_\n\n` +
       `• *${p}ig <link>*\n` +
       `  Download reels, video, atau foto Instagram.\n\n` +
+      `• *${p}tw <link>*\n` +
+      `  Download video dari Twitter / X.\n\n` +
       `• *${p}help*\n` +
       `  Menampilkan menu bantuan ini.\n\n` +
       `_💡 Tips: Reply media hasil download dengan ${p}sticker untuk dijadikan stiker!_`;

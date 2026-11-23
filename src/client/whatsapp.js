@@ -70,6 +70,7 @@ function initWhatsApp() {
 
     puppeteer: {
       headless: true,
+      protocolTimeout: 180000,
 
       executablePath:
         process.env.PUPPETEER_EXECUTABLE_PATH,
