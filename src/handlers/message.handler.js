@@ -7,12 +7,16 @@ const rateLimitService = require('../services/rateLimit.service');
 const sticker = require('../commands/sticker');
 const help = require('../commands/help');
 const ig = require('../commands/ig');
+const tw = require('../commands/tw');
 
 const COMMANDS = {
   sticker,
   help,
   ig,
-  instagram: ig
+  instagram: ig,
+  tw,
+  twitter: tw,
+  x: tw
 };
 
 async function handleMessage({ msg, client }) {
