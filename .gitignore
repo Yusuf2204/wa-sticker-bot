@@ -3,3 +3,6 @@ node_modules
 .wwebjs_auth_backup
 .wwebjs_cache
 data/
+temp/*
+!temp/.gitkeep
+*.tar.gz

@@ -19,6 +19,48 @@ function cleanupSingletonLocks() {
   });
 }
 
+async function dismissModals(pupPage) {
+  if (!pupPage || pupPage.isClosed()) return;
+  try {
+    const result = await pupPage.evaluate(() => {
+      const dismissed = [];
+      const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+      
+      const continueBtn = buttons.find(b => {
+        const txt = (b.innerText || b.textContent || '').trim().toLowerCase();
+        return txt === 'continue' || txt === 'lanjutkan' || txt === 'ok' || txt === 'got it';
+      });
+      if (continueBtn) {
+        continueBtn.click();
+        dismissed.push('Continue button');
+      }
+
+      const useHereBtn = buttons.find(b => {
+        const txt = (b.innerText || b.textContent || '').trim().toLowerCase();
+        return txt.includes('use here') || txt.includes('gunakan di sini');
+      });
+      if (useHereBtn) {
+        useHereBtn.click();
+        dismissed.push('Use Here button');
+      }
+
+      const closeBtn = document.querySelector('span[data-icon="x"]')?.closest('button, div[role="button"]');
+      if (closeBtn && dismissed.length === 0) {
+        closeBtn.click();
+        dismissed.push('Close (X) button');
+      }
+
+      return dismissed;
+    });
+
+    if (result && result.length > 0) {
+      logger.info(`[MODAL] Dismissed popup: ${result.join(', ')}`);
+    }
+  } catch (err) {
+    // ignore
+  }
+}
+
 function initWhatsApp() {
   cleanupSingletonLocks();
   patchUtilsOnDisk();
@@ -59,7 +101,24 @@ function initWhatsApp() {
 
   client.on('ready', async () => {
     logger.info('WhatsApp client ready');
+    console.log('[BOT INFO] Connected as:', client.info?.wid?._serialized, 'Pushname:', client.info?.pushname);
+    try {
+      if (client.pupPage) {
+        await dismissModals(client.pupPage);
+      }
+    } catch (e) {
+      logger.warn(`[MODAL] Error dismissing modals on ready: ${e.message}`);
+    }
     await injectBrowserPatch(client);
+
+    // Periodically check and dismiss modals (like Use Here or update banners)
+    setInterval(async () => {
+      try {
+        if (client.pupPage && !client.pupPage.isClosed()) {
+          await dismissModals(client.pupPage);
+        }
+      } catch (_) {}
+    }, 15000);
   });
 
   client.on('authenticated', () => {
