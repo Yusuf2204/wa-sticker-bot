@@ -19,8 +19,8 @@ A multi-purpose bot designed for high reliability: automatically converts **imag
   * Downloads **Reels**, single videos, and IGTV.
   * Full **Carousel / Slideshow** support (sends all photo slides in order).
   * Multi-engine fallback (SaveInsta API, VKr, yt-dlp).
-* ✅ **Twitter / X Video Downloader (`!tw`)**
-  * Focuses on high-quality video & GIF downloads.
+* ✅ **Twitter / X Downloader (`!tw`)**
+  * Downloads high-quality **video**, **GIF**, and **photos** (including multi-photo posts).
   * **Intelligent Resolution Selection:** Automatically chooses the highest quality (up to 1080p Full HD) that fits safely within WhatsApp limits (`<15MB`).
   * **Auto-Compress Fallback:** Automatically downscales via FFmpeg if a 4K video exceeds WhatsApp limits.
   * Multi-engine fallback (FxTwitter API, VxTwitter API, yt-dlp).

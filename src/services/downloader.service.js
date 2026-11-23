@@ -346,6 +346,7 @@ async function downloadInstagram(targetUrl) {
 
 /**
  * Engine 1: FxTwitter API
+ * Mendukung video/GIF dan foto (single maupun multi-image)
  */
 async function tryFxTwitter(statusId, username) {
   logger.info(`[DOWNLOADER][FxTwitter] Fetching tweet ID: ${statusId}`);
@@ -372,62 +373,74 @@ async function tryFxTwitter(statusId, username) {
 
   const media = tweet.media;
   const videos = media?.videos;
+  const photos = media?.photos;
+  const resultItems = [];
 
-  if (!videos || videos.length === 0) {
-    if (media?.photos && media.photos.length > 0) {
-      const err = new Error(
-        'Tweet ini hanya berisi gambar/foto.\n' +
-        'Fitur ini khusus untuk mengunduh video Twitter/X (foto Twitter bisa disimpan langsung tanpa bot).'
-      );
-      err.isUserError = true;
-      throw err;
+  // 1. Ekstraksi Video / GIF jika ada
+  if (videos && Array.isArray(videos) && videos.length > 0) {
+    for (const videoObj of videos) {
+      let videoUrl = videoObj.url;
+
+      if (videoObj.variants && Array.isArray(videoObj.variants)) {
+        const mp4Variants = videoObj.variants.filter(
+          v => (v.content_type === 'video/mp4' || v.container === 'mp4') && v.url
+        );
+        if (mp4Variants.length > 0) {
+          mp4Variants.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+
+          const duration = videoObj.duration || 0;
+          const MAX_SAFE_BYTES = 15 * 1024 * 1024; // 15 MB
+
+          let chosen = null;
+          if (duration > 0) {
+            for (const v of mp4Variants) {
+              const estSize = ((v.bitrate || 0) * duration) / 8;
+              if (estSize <= MAX_SAFE_BYTES) {
+                chosen = v;
+                break;
+              }
+            }
+          } else {
+            chosen = mp4Variants.find(v => (v.bitrate || 0) <= 3000000);
+          }
+
+          if (!chosen) {
+            chosen = mp4Variants[mp4Variants.length - 1];
+          }
+
+          videoUrl = chosen.url;
+          logger.info(`[DOWNLOADER][FxTwitter] Selected video variant: bitrate=${chosen.bitrate}`);
+        }
+      }
+
+      resultItems.push({
+        url: videoUrl,
+        type: 'video',
+        ext: 'mp4'
+      });
     }
-    const err = new Error('Tweet ini tidak mengandung video atau GIF.');
+  }
+
+  // 2. Ekstraksi Foto / Gambar jika ada
+  if (photos && Array.isArray(photos) && photos.length > 0) {
+    for (const photoObj of photos) {
+      if (photoObj.url) {
+        resultItems.push({
+          url: photoObj.url,
+          type: 'image',
+          ext: 'jpg'
+        });
+      }
+    }
+  }
+
+  if (resultItems.length === 0) {
+    const err = new Error('Tweet ini tidak mengandung media (video, GIF, atau foto).');
     err.isUserError = true;
     throw err;
   }
 
-  // Pilih kualitas terbaik yang aman untuk WhatsApp (< 15 MB)
-  const videoObj = videos[0];
-  let videoUrl = videoObj.url;
-
-  if (videoObj.variants && Array.isArray(videoObj.variants)) {
-    const mp4Variants = videoObj.variants.filter(
-      v => (v.content_type === 'video/mp4' || v.container === 'mp4') && v.url
-    );
-    if (mp4Variants.length > 0) {
-      mp4Variants.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-
-      const duration = videoObj.duration || 0;
-      const MAX_SAFE_BYTES = 15 * 1024 * 1024; // 15 MB
-
-      let chosen = null;
-      if (duration > 0) {
-        for (const v of mp4Variants) {
-          const estSize = ((v.bitrate || 0) * duration) / 8;
-          if (estSize <= MAX_SAFE_BYTES) {
-            chosen = v;
-            break;
-          }
-        }
-      } else {
-        chosen = mp4Variants.find(v => (v.bitrate || 0) <= 3000000);
-      }
-
-      if (!chosen) {
-        chosen = mp4Variants[mp4Variants.length - 1];
-      }
-
-      videoUrl = chosen.url;
-      logger.info(`[DOWNLOADER][FxTwitter] Selected variant: bitrate=${chosen.bitrate}, url=${videoUrl}`);
-    }
-  }
-
-  return {
-    url: videoUrl,
-    type: 'video',
-    ext: 'mp4'
-  };
+  return resultItems;
 }
 
 /**
@@ -451,42 +464,48 @@ async function tryVxTwitter(statusId, username) {
 
   const data = await res.json();
   const mediaExtended = data?.media_extended || [];
+  const resultItems = [];
 
-  const videoItem = mediaExtended.find(m => m.type === 'video' || m.type === 'gif');
-  if (videoItem && videoItem.url) {
-    return {
-      url: videoItem.url,
-      type: 'video',
-      ext: 'mp4'
-    };
-  }
-
-  if (data?.mediaURLs && Array.isArray(data.mediaURLs)) {
-    const mp4Url = data.mediaURLs.find(u => u.includes('.mp4') || u.includes('/vid/'));
-    if (mp4Url) {
-      return {
-        url: mp4Url,
-        type: 'video',
-        ext: 'mp4'
-      };
+  for (const item of mediaExtended) {
+    if (item.type === 'video' || item.type === 'gif') {
+      if (item.url) {
+        resultItems.push({
+          url: item.url,
+          type: 'video',
+          ext: 'mp4'
+        });
+      }
+    } else if (item.type === 'image') {
+      if (item.url) {
+        const photoUrl = item.url.includes('?') ? item.url : `${item.url}?name=orig`;
+        resultItems.push({
+          url: photoUrl,
+          type: 'image',
+          ext: 'jpg'
+        });
+      }
     }
   }
 
-  const hasPhotos =
-    mediaExtended.some(m => m.type === 'image') ||
-    (data?.mediaURLs && data.mediaURLs.length > 0);
-  if (hasPhotos) {
-    const err = new Error(
-      'Tweet ini hanya berisi gambar/foto.\n' +
-      'Fitur ini khusus untuk mengunduh video Twitter/X (foto Twitter bisa disimpan langsung tanpa bot).'
-    );
+  // Fallback ke mediaURLs jika media_extended kosong
+  if (resultItems.length === 0 && data?.mediaURLs && Array.isArray(data.mediaURLs)) {
+    for (const u of data.mediaURLs) {
+      const isVideo = u.includes('.mp4') || u.includes('/vid/');
+      resultItems.push({
+        url: u,
+        type: isVideo ? 'video' : 'image',
+        ext: isVideo ? 'mp4' : 'jpg'
+      });
+    }
+  }
+
+  if (resultItems.length === 0) {
+    const err = new Error('Tweet ini tidak mengandung media (video, GIF, atau foto).');
     err.isUserError = true;
     throw err;
   }
 
-  const err = new Error('Tweet ini tidak mengandung video atau GIF.');
-  err.isUserError = true;
-  throw err;
+  return resultItems;
 }
 
 /**
@@ -530,9 +549,9 @@ async function ensureVideoUnderLimit(filePath, maxBytes = 16 * 1024 * 1024) {
 }
 
 /**
- * Main Download Function for Twitter / X Video
+ * Main Download Function for Twitter / X (Video, GIF & Photo)
  */
-async function downloadTwitterVideo(targetUrl) {
+async function downloadTwitter(targetUrl) {
   const match = targetUrl.match(TWITTER_REGEX);
   if (!match) {
     throw new Error('Link Twitter / X tidak valid. Pastikan link mengarah ke postingan status tweet.');
@@ -547,20 +566,38 @@ async function downloadTwitterVideo(targetUrl) {
   }
 
   const fileId = uuidv4();
-  const destPath = path.join(tempDir, `tw_${fileId}.mp4`);
   const outputBase = path.join(tempDir, `tw_${fileId}`);
 
   let lastError = null;
 
   // 1. Coba Engine 1 (FxTwitter)
   try {
-    const media = await tryFxTwitter(statusId, username);
-    await downloadToFile(media.url, destPath, 'https://twitter.com/');
-    const finalPath = await ensureVideoUnderLimit(destPath);
+    const mediaList = await tryFxTwitter(statusId, username);
+    const downloadedItems = [];
+    const limit = Math.min(mediaList.length, 10);
+
+    for (let i = 0; i < limit; i++) {
+      const media = mediaList[i];
+      const destPath = `${outputBase}_${i + 1}.${media.ext}`;
+      await downloadToFile(media.url, destPath, 'https://twitter.com/');
+
+      let finalPath = destPath;
+      if (media.type === 'video') {
+        finalPath = await ensureVideoUnderLimit(destPath);
+      }
+
+      downloadedItems.push({
+        filePath: finalPath,
+        type: media.type,
+        ext: media.ext
+      });
+    }
+
     return {
-      filePath: finalPath,
-      type: 'video',
-      ext: 'mp4'
+      items: downloadedItems,
+      filePath: downloadedItems[0].filePath,
+      type: downloadedItems[0].type,
+      ext: downloadedItems[0].ext
     };
   } catch (err) {
     if (err.isUserError) throw err;
@@ -570,13 +607,32 @@ async function downloadTwitterVideo(targetUrl) {
 
   // 2. Coba Engine 2 (VxTwitter)
   try {
-    const media = await tryVxTwitter(statusId, username);
-    await downloadToFile(media.url, destPath, 'https://twitter.com/');
-    const finalPath = await ensureVideoUnderLimit(destPath);
+    const mediaList = await tryVxTwitter(statusId, username);
+    const downloadedItems = [];
+    const limit = Math.min(mediaList.length, 10);
+
+    for (let i = 0; i < limit; i++) {
+      const media = mediaList[i];
+      const destPath = `${outputBase}_${i + 1}.${media.ext}`;
+      await downloadToFile(media.url, destPath, 'https://twitter.com/');
+
+      let finalPath = destPath;
+      if (media.type === 'video') {
+        finalPath = await ensureVideoUnderLimit(destPath);
+      }
+
+      downloadedItems.push({
+        filePath: finalPath,
+        type: media.type,
+        ext: media.ext
+      });
+    }
+
     return {
-      filePath: finalPath,
-      type: 'video',
-      ext: 'mp4'
+      items: downloadedItems,
+      filePath: downloadedItems[0].filePath,
+      type: downloadedItems[0].type,
+      ext: downloadedItems[0].ext
     };
   } catch (err) {
     if (err.isUserError) throw err;
@@ -587,14 +643,20 @@ async function downloadTwitterVideo(targetUrl) {
   // 3. Coba Engine 3 (yt-dlp)
   try {
     const items = await tryYtDlp(targetUrl, outputBase);
-    const videoItem = items.find(i => i.type === 'video');
-    if (videoItem) {
-      videoItem.filePath = await ensureVideoUnderLimit(videoItem.filePath);
-      return videoItem;
+    for (const item of items) {
+      if (item.type === 'video') {
+        item.filePath = await ensureVideoUnderLimit(item.filePath);
+      }
     }
+    return {
+      items,
+      filePath: items[0].filePath,
+      type: items[0].type,
+      ext: items[0].ext
+    };
   } catch (err) {
     if (err.message && err.message.includes('No video could be found')) {
-      const uErr = new Error('Tweet ini tidak mengandung video atau GIF.');
+      const uErr = new Error('Tweet ini tidak mengandung media yang dapat diunduh.');
       uErr.isUserError = true;
       throw uErr;
     }
@@ -603,7 +665,7 @@ async function downloadTwitterVideo(targetUrl) {
   }
 
   throw new Error(
-    `Gagal mengunduh video dari Twitter / X.\n` +
+    `Gagal mengunduh media dari Twitter / X.\n` +
     `Kemungkinan akun atau tweet bersifat privat / dibatasi.\n` +
     `_Detail error:_ ${lastError ? lastError.message : 'Unknown'}`
   );
@@ -912,6 +974,7 @@ async function downloadTikTok(targetUrl) {
 
 module.exports = {
   downloadInstagram,
-  downloadTwitterVideo,
+  downloadTwitter,
+  downloadTwitterVideo: downloadTwitter,
   downloadTikTok
 };

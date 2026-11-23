@@ -12,7 +12,7 @@ module.exports = {
       `• *${p}ig <link>*\n` +
       `  Download reels, video, atau foto Instagram.\n\n` +
       `• *${p}tw <link>*\n` +
-      `  Download video dari Twitter / X.\n\n` +
+      `  Download video, GIF, atau foto dari Twitter / X.\n\n` +
       `• *${p}tt <link>*\n` +
       `  Download video / slide TikTok tanpa watermark.\n\n` +
       `• *${p}help*\n` +
