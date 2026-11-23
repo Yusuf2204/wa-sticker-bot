@@ -1,6 +1,6 @@
 const fs = require('fs');
 const { MessageMedia } = require('whatsapp-web.js');
-const { downloadTwitterVideo } = require('../services/downloader.service');
+const { downloadTwitter } = require('../services/downloader.service');
 const { deleteAfter } = require('../utils/cleanup.util');
 const logger = require('../utils/logger.util');
 
@@ -40,34 +40,49 @@ module.exports = {
         `ℹ️ *Cara Menggunakan Downloader Twitter / X:*\n\n` +
         `Ketik: *!tw <link twitter/x>*\n` +
         `_Contoh:_ \`!tw https://x.com/user/status/123456789\`\n\n` +
-        `Atau balas/reply pesan yang berisi link Twitter/X dengan mengetik *!tw*\n\n` +
-        `_Catatan: Fitur ini khusus untuk mengunduh video atau GIF Twitter/X._`
+        `Atau balas/reply pesan yang berisi link Twitter/X dengan mengetik *!tw*`
       );
     }
 
     let statusMsg = null;
     try {
-      statusMsg = await msg.reply('⏳ *Sedang memproses dan mengunduh video Twitter/X...*\n_Mohon tunggu sebentar._');
+      statusMsg = await msg.reply('⏳ *Sedang memproses dan mengunduh media Twitter/X...*\n_Mohon tunggu sebentar._');
     } catch (_) {}
 
     try {
-      logger.info(`[TW] Starting video download for: ${targetUrl}`);
-      const result = await downloadTwitterVideo(targetUrl);
+      logger.info(`[TW] Starting download for: ${targetUrl}`);
+      const result = await downloadTwitter(targetUrl);
 
-      if (!result.filePath || !fs.existsSync(result.filePath)) {
-        throw new Error('Video tidak berhasil diunduh.');
+      const items = result.items || (result.filePath ? [result] : []);
+      if (items.length === 0) {
+        throw new Error('Tidak ada media yang berhasil diunduh.');
       }
 
-      const media = MessageMedia.fromFilePath(result.filePath);
-      const caption =
-        `✅ *Twitter / X Video Downloader*\n\n` +
-        `🔗 *Link:* ${targetUrl}\n` +
-        `💡 *Tips:* Balas/reply video ini dengan *!sticker* untuk menjadikannya stiker!`;
+      const total = items.length;
+      for (let i = 0; i < total; i++) {
+        const item = items[i];
+        if (!item.filePath || !fs.existsSync(item.filePath)) continue;
 
-      await msg.reply(media, undefined, { caption });
+        const media = MessageMedia.fromFilePath(item.filePath);
+        let caption = undefined;
 
-      // Hapus file sementara setelah 20 detik
-      deleteAfter(result.filePath, 20000);
+        if (total === 1) {
+          caption =
+            `✅ *Twitter / X Downloader*\n\n` +
+            `🔗 *Link:* ${targetUrl}\n` +
+            `💡 *Tips:* Balas/reply media ini dengan *!sticker* untuk menjadikannya stiker!`;
+        } else {
+          caption = `📸 *Slide ${i + 1}/${total}*`;
+          if (i === 0) {
+            caption += `\n\n🔗 *Link:* ${targetUrl}\n💡 *Tips:* Balas media ini dengan *!sticker* untuk menjadikannya stiker!`;
+          }
+        }
+
+        await msg.reply(media, undefined, { caption });
+
+        // Hapus file sementara setelah 20 detik
+        deleteAfter(item.filePath, 20000);
+      }
 
       // Hapus pesan status loading jika bisa
       if (statusMsg) {
