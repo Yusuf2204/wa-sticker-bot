@@ -9,6 +9,7 @@ const help = require('../commands/help');
 const ig = require('../commands/ig');
 const tw = require('../commands/tw');
 const tt = require('../commands/tt');
+const fb = require('../commands/fb');
 
 const COMMANDS = {
   sticker,
@@ -19,7 +20,9 @@ const COMMANDS = {
   twitter: tw,
   x: tw,
   tt,
-  tiktok: tt
+  tiktok: tt,
+  fb,
+  facebook: fb
 };
 
 async function handleMessage({ msg, client }) {

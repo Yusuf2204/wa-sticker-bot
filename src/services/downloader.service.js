@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const crypto = require('crypto');
@@ -19,6 +20,9 @@ const TWITTER_REGEX =
 
 const TIKTOK_REGEX =
   /https?:\/\/(?:(?:www|m|vt|vm|t)\.)?tiktok\.com\/[^\s]+/i;
+
+const FACEBOOK_REGEX =
+  /https?:\/\/(?:(?:www|m|web|fb)\.)?(?:facebook\.com|fb\.watch)\/[^\s]+/i;
 
 /**
  * Download file from URL to disk
@@ -972,9 +976,351 @@ async function downloadTikTok(targetUrl) {
   );
 }
 
+/**
+ * Follow redirects for short Facebook links (e.g. fb.watch)
+ */
+async function resolveFacebookUrl(targetUrl) {
+  if (targetUrl.includes('fb.watch')) {
+    try {
+      const res = await fetch(targetUrl, {
+        method: 'HEAD',
+        redirect: 'manual',
+        headers: {
+          'User-Agent': 'curl/7.88.1',
+          'Accept': '*/*'
+        }
+      });
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get('location');
+        if (loc && loc.startsWith('http')) {
+          logger.info(`[DOWNLOADER][FB] Resolved redirect: ${targetUrl} -> ${loc}`);
+          return loc;
+        }
+      }
+    } catch (err) {
+      logger.warn(`[DOWNLOADER][FB] Failed to resolve redirect for ${targetUrl}: ${err.message}`);
+    }
+  }
+  return targetUrl;
+}
+
+/**
+ * Facebook Engine 1: fbdownloader.to
+ */
+async function tryFbDownloader(targetUrl) {
+  logger.info(`[DOWNLOADER][fbdownloader.to] Trying: ${targetUrl}`);
+  const res = await fetch('https://fbdownloader.to/api/ajaxSearch', {
+    method: 'POST',
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Origin': 'https://fbdownloader.to',
+      'Referer': 'https://fbdownloader.to/',
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({ q: targetUrl })
+  });
+
+  if (!res.ok) {
+    throw new Error(`fbdownloader.to HTTP error: ${res.status}`);
+  }
+
+  const json = await res.json();
+  if (!json || json.status !== 'ok' || !json.data) {
+    throw new Error(json?.mess || 'fbdownloader.to returned no data');
+  }
+
+  const html = json.data;
+  const links = [...html.matchAll(/href="([^"]+)"/g)]
+    .map(m => m[1])
+    .filter(l => l.startsWith('http') && !l.includes('google.com') && !l.includes('facebook.com'));
+
+  if (links.length === 0) {
+    throw new Error('No download links found in fbdownloader.to');
+  }
+
+  const hdLink = links.find(l => l.includes('(HD)') || l.includes('720p') || l.includes('1080p')) || links[0];
+  return [{
+    url: hdLink,
+    type: 'video',
+    ext: 'mp4',
+    referer: 'https://fbdownloader.to/'
+  }];
+}
+
+/**
+ * Facebook Engine 2: snapsave.app
+ */
+async function trySnapSaveFacebook(targetUrl) {
+  logger.info(`[DOWNLOADER][SnapSave] Trying: ${targetUrl}`);
+  const res = await fetch('https://snapsave.app/action.php?lang=en', {
+    method: 'POST',
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Referer': 'https://snapsave.app/',
+      'Origin': 'https://snapsave.app',
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({ url: targetUrl })
+  });
+
+  if (!res.ok) {
+    throw new Error(`snapsave.app HTTP error: ${res.status}`);
+  }
+
+  const text = await res.text();
+  let captured = '';
+  const sandbox = {
+    eval: x => {
+      captured = x;
+    },
+    decodeURIComponent,
+    escape,
+    String,
+    Math
+  };
+
+  try {
+    vm.createContext(sandbox);
+    vm.runInContext(text, sandbox);
+  } catch (err) {
+    throw new Error(`SnapSave decode error: ${err.message}`);
+  }
+
+  if (!captured) {
+    throw new Error('SnapSave unpack failed or empty');
+  }
+
+  if (captured.includes('The video is private') || captured.includes('is-danger')) {
+    throw new Error('Video Facebook bersifat privat atau tidak dapat diakses.');
+  }
+
+  const htmlMatch = captured.match(/innerHTML\s*=\s*(".*");/s) || captured.match(/innerHTML\s*=\s*(`.*`);/s);
+  let html = htmlMatch ? eval(htmlMatch[1]) : captured;
+
+  // Cek apakah ada gambar / album
+  const imgLinks = [...html.matchAll(/<img[^>]+src="([^"]+)"/g)]
+    .map(m => m[1])
+    .filter(l => l.includes('fbcdn.net') && !l.includes('thumbnailsite'));
+
+  // Ambil download link video
+  const links = [...html.matchAll(/href="([^"]+)"/g)]
+    .map(m => m[1])
+    .filter(l => l.startsWith('http') && !l.includes('snapsave.app') && !l.includes('google.com'));
+
+  if (links.length === 0 && imgLinks.length === 0) {
+    throw new Error('Tidak ada link unduhan di snapsave');
+  }
+
+  if (links.length > 0) {
+    const directLink = links.find(l => l.includes('d.rapidcdn.app') || l.includes('fbcdn.net')) || links[0];
+    return [{
+      url: directLink,
+      type: 'video',
+      ext: 'mp4',
+      referer: 'https://snapsave.app/'
+    }];
+  }
+
+  // Jika berupa gambar
+  return imgLinks.map(imgUrl => ({
+    url: imgUrl,
+    type: 'image',
+    ext: 'jpg',
+    referer: 'https://snapsave.app/'
+  }));
+}
+
+/**
+ * Facebook Engine 3: getmyfb.com
+ */
+async function tryGetMyFb(targetUrl) {
+  logger.info(`[DOWNLOADER][getmyfb] Trying: ${targetUrl}`);
+  const res = await fetch('https://getmyfb.com/process', {
+    method: 'POST',
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+      'Origin': 'https://getmyfb.com',
+      'Referer': 'https://getmyfb.com/'
+    },
+    body: new URLSearchParams({ id: targetUrl, locale: 'en' })
+  });
+
+  if (!res.ok) {
+    throw new Error(`getmyfb HTTP error: ${res.status}`);
+  }
+
+  const html = await res.text();
+  const hdMatch =
+    html.match(/class="[^"]*hd-button[^"]*"[^>]*href="([^"]+)"/i) ||
+    html.match(/href="([^"]+)"[^>]*class="[^"]*hd-button[^"]*"/i);
+  const sdMatch =
+    html.match(/class="[^"]*sd-button[^"]*"[^>]*href="([^"]+)"/i) ||
+    html.match(/href="([^"]+)"[^>]*class="[^"]*sd-button[^"]*"/i);
+  const downloadUrl = (hdMatch ? hdMatch[1] : null) || (sdMatch ? sdMatch[1] : null);
+
+  if (!downloadUrl || !downloadUrl.startsWith('http')) {
+    throw new Error('getmyfb did not return download link');
+  }
+
+  return [{
+    url: downloadUrl,
+    type: 'video',
+    ext: 'mp4',
+    referer: 'https://getmyfb.com/'
+  }];
+}
+
+/**
+ * Main Download Function for Facebook
+ * Mendukung video (Reels, Watch, Video Posts) dan foto
+ */
+async function downloadFacebook(targetUrl) {
+  const tempDir = path.resolve(__dirname, '../../', config.paths?.temp || 'temp');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+
+  const fileId = uuidv4();
+  const outputBase = path.join(tempDir, `fb_${fileId}`);
+
+  // Resolve short links like fb.watch/...
+  const cleanUrl = await resolveFacebookUrl(targetUrl);
+  let lastError = null;
+
+  // 1. Coba Engine 1 (fbdownloader.to)
+  try {
+    const mediaUrls = await tryFbDownloader(cleanUrl);
+    const downloadedItems = [];
+    const limit = Math.min(mediaUrls.length, 10);
+
+    for (let i = 0; i < limit; i++) {
+      const media = mediaUrls[i];
+      const destPath = `${outputBase}_${i + 1}.${media.ext}`;
+      await downloadToFile(media.url, destPath, media.referer || 'https://fbdownloader.to/');
+
+      let finalPath = destPath;
+      if (media.type === 'video') {
+        finalPath = await ensureVideoUnderLimit(destPath);
+      }
+
+      downloadedItems.push({
+        filePath: finalPath,
+        type: media.type,
+        ext: media.ext
+      });
+    }
+
+    return {
+      items: downloadedItems,
+      filePath: downloadedItems[0].filePath,
+      type: downloadedItems[0].type,
+      ext: downloadedItems[0].ext
+    };
+  } catch (err) {
+    logger.warn(`[DOWNLOADER] Engine 1 (fbdownloader.to) failed: ${err.message}`);
+    lastError = err;
+  }
+
+  // 2. Coba Engine 2 (SnapSave)
+  try {
+    const mediaUrls = await trySnapSaveFacebook(cleanUrl);
+    const downloadedItems = [];
+    const limit = Math.min(mediaUrls.length, 10);
+
+    for (let i = 0; i < limit; i++) {
+      const media = mediaUrls[i];
+      const destPath = `${outputBase}_${i + 1}.${media.ext}`;
+      await downloadToFile(media.url, destPath, media.referer || 'https://snapsave.app/');
+
+      let finalPath = destPath;
+      if (media.type === 'video') {
+        finalPath = await ensureVideoUnderLimit(destPath);
+      }
+
+      downloadedItems.push({
+        filePath: finalPath,
+        type: media.type,
+        ext: media.ext
+      });
+    }
+
+    return {
+      items: downloadedItems,
+      filePath: downloadedItems[0].filePath,
+      type: downloadedItems[0].type,
+      ext: downloadedItems[0].ext
+    };
+  } catch (err) {
+    logger.warn(`[DOWNLOADER] Engine 2 (SnapSave) failed: ${err.message}`);
+    lastError = err;
+  }
+
+  // 3. Coba Engine 3 (getmyfb)
+  try {
+    const mediaUrls = await tryGetMyFb(cleanUrl);
+    const downloadedItems = [];
+    const limit = Math.min(mediaUrls.length, 10);
+
+    for (let i = 0; i < limit; i++) {
+      const media = mediaUrls[i];
+      const destPath = `${outputBase}_${i + 1}.${media.ext}`;
+      await downloadToFile(media.url, destPath, media.referer || 'https://getmyfb.com/');
+
+      let finalPath = destPath;
+      if (media.type === 'video') {
+        finalPath = await ensureVideoUnderLimit(destPath);
+      }
+
+      downloadedItems.push({
+        filePath: finalPath,
+        type: media.type,
+        ext: media.ext
+      });
+    }
+
+    return {
+      items: downloadedItems,
+      filePath: downloadedItems[0].filePath,
+      type: downloadedItems[0].type,
+      ext: downloadedItems[0].ext
+    };
+  } catch (err) {
+    logger.warn(`[DOWNLOADER] Engine 3 (getmyfb) failed: ${err.message}`);
+    lastError = err;
+  }
+
+  // 4. Coba Engine 4 (yt-dlp)
+  try {
+    const items = await tryYtDlp(cleanUrl, outputBase);
+    for (const item of items) {
+      if (item.type === 'video') {
+        item.filePath = await ensureVideoUnderLimit(item.filePath);
+      }
+    }
+    return {
+      items,
+      filePath: items[0].filePath,
+      type: items[0].type,
+      ext: items[0].ext
+    };
+  } catch (err) {
+    logger.warn(`[DOWNLOADER] Engine 4 (yt-dlp) failed: ${err.message}`);
+    lastError = err;
+  }
+
+  throw new Error(
+    `Gagal mengunduh media dari Facebook.\n` +
+    `Kemungkinan video/postingan bersifat privat, dibatasi hak cipta, atau memerlukan login Facebook.\n` +
+    `_Detail error:_ ${lastError ? lastError.message : 'Unknown'}`
+  );
+}
+
 module.exports = {
   downloadInstagram,
   downloadTwitter,
   downloadTwitterVideo: downloadTwitter,
-  downloadTikTok
+  downloadTikTok,
+  downloadFacebook
 };

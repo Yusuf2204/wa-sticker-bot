@@ -5,19 +5,25 @@ module.exports = {
     const p = config.prefix || '!';
 
     const helpText =
-      `🤖 *MENU BOT*\n\n` +
+      `🤖 *DAFTAR PERINTAH BOT*\n\n` +
+      `🎨 *STICKER MAKER*\n` +
       `• *${p}sticker*\n` +
-      `  Buat stiker dari gambar/video (kirim/reply media).\n` +
-      `  _Kustom nama: \`${p}sticker Paket | Pembuat\`_\n\n` +
+      `  Buat stiker dari gambar, GIF, atau video (kirim/reply media).\n` +
+      `  _Format kustom: \`${p}sticker NamaPack | NamaAuthor\`_\n\n` +
+      `📥 *MEDIA DOWNLOADER*\n` +
       `• *${p}ig <link>*\n` +
-      `  Download reels, video, atau foto Instagram.\n\n` +
+      `  Download Reels, video, dan foto carousel Instagram.\n` +
       `• *${p}tw <link>*\n` +
-      `  Download video, GIF, atau foto dari Twitter / X.\n\n` +
+      `  Download video, GIF, dan foto dari Twitter / X.\n` +
       `• *${p}tt <link>*\n` +
-      `  Download video / slide TikTok tanpa watermark.\n\n` +
+      `  Download video (No Watermark) dan foto slide TikTok.\n` +
+      `• *${p}fb <link>*\n` +
+      `  Download video (Reels/Watch) dan foto Facebook.\n\n` +
+      `ℹ️ *UMUM & BANTUAN*\n` +
       `• *${p}help*\n` +
-      `  Menampilkan menu bantuan ini.\n\n` +
-      `_💡 Tips: Reply media hasil download dengan ${p}sticker untuk dijadikan stiker!_`;
+      `  Menampilkan daftar menu bantuan ini.\n\n` +
+      `────────────────────────\n` +
+      `💡 *Tips:* Kamu bisa balas/reply media hasil unduhan apa pun dengan *${p}sticker* untuk langsung menjadikannya stiker!`;
 
     await msg.reply(helpText);
   }
