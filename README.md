@@ -34,6 +34,14 @@ A multi-purpose bot designed for high reliability: automatically converts **imag
   * **Intelligent Compression:** Auto-compresses videos via FFmpeg if exceeding WhatsApp limits (`<16MB`).
   * Multi-engine fallback (fbdownloader.to, SnapSave API, getmyfb, yt-dlp).
 
+### ⏰ Reminder & Utility
+* ✅ **Automated Reminders (`!remind`, `!reminder`)**
+  * Supports duration (`10m`, `2j`, `45s`) and specific time (`14:30`, `besok 08:00`).
+  * Constrained to a safe maximum of **24 hours**.
+  * Supports replying to any message to set it as reminder content.
+  * Group mentions (@user tag) & personal chat delivery.
+  * **Persistent JSON Storage** (`data/reminders.json`) with auto-recovery of missed timers after restart.
+
 ### ⚙️ Production Reliability & Architecture
 * ✅ **Queue System (`p-queue`)** with concurrent processing (`10 jobs`) to prevent CPU spikes.
 * ✅ **Rate Limiting** per user with reset timers and quota alerts.
@@ -65,6 +73,7 @@ A multi-purpose bot designed for high reliability: automatically converts **imag
 | `!tw` | `!twitter`, `!x` | Download video, GIF, or photo from Twitter / X | `!tw https://x.com/user/status/xxxx` |
 | `!tt` | `!tiktok` | Download video (No Watermark) or photo slide | `!tt https://vt.tiktok.com/xxxx/` |
 | `!fb` | `!facebook` | Download video (Reels/Watch) or photo from Facebook | `!fb https://www.facebook.com/watch?v=xxxx` |
+| `!remind` | `!reminder` | Set automated reminder (max 24h, list, cancel) | `!remind 15m Istirahat` / `!remind list` |
 | `!help` | - | Display interactive help menu | `!help` |
 
 > 💡 **Pro-tip:** Every media downloaded via `!ig`, `!tw`, `!tt`, or `!fb` can be instantly turned into a WhatsApp sticker by simply replying to the bot's media with `!sticker`!
