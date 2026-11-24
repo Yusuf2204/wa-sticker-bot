@@ -2,7 +2,7 @@
 
 WhatsApp Bot built with **Node.js**, **whatsapp-web.js**, **FFmpeg**, **yt-dlp**, and **Docker**.
 
-A multi-purpose bot designed for high reliability: automatically converts **images**, **GIFs**, and **videos** into WhatsApp stickers, and downloads media from **Instagram**, **Twitter / X**, and **TikTok** (No Watermark) with smart compression and queue management.
+A multi-purpose bot designed for high reliability: automatically converts **images**, **GIFs**, and **videos** into WhatsApp stickers, and downloads media from **Instagram**, **Twitter / X**, **TikTok** (No Watermark), and **Facebook** with smart compression and queue management.
 
 ---
 
@@ -28,6 +28,11 @@ A multi-purpose bot designed for high reliability: automatically converts **imag
   * **No Watermark** video extraction.
   * Supports TikTok photo slideshow posts (multi-slide galleries).
   * Multi-engine fallback (SSSTik scraper, MusicalDown, yt-dlp).
+* ✅ **Facebook Downloader (`!fb`)**
+  * Downloads **Reels**, **Watch videos**, and video posts.
+  * Supports Facebook photo posts and albums.
+  * **Intelligent Compression:** Auto-compresses videos via FFmpeg if exceeding WhatsApp limits (`<16MB`).
+  * Multi-engine fallback (fbdownloader.to, SnapSave API, getmyfb, yt-dlp).
 
 ### ⚙️ Production Reliability & Architecture
 * ✅ **Queue System (`p-queue`)** with concurrent processing (`10 jobs`) to prevent CPU spikes.
@@ -57,11 +62,12 @@ A multi-purpose bot designed for high reliability: automatically converts **imag
 | :--- | :--- | :--- | :--- |
 | `!sticker` | - | Convert image / GIF / video into sticker | `!sticker Pack | Author` *(or reply media)* |
 | `!ig` | `!instagram` | Download Reels, video, or photo carousel | `!ig https://instagram.com/p/xxxx` |
-| `!tw` | `!twitter`, `!x` | Download video / GIF from Twitter / X | `!tw https://x.com/user/status/xxxx` |
+| `!tw` | `!twitter`, `!x` | Download video, GIF, or photo from Twitter / X | `!tw https://x.com/user/status/xxxx` |
 | `!tt` | `!tiktok` | Download video (No Watermark) or photo slide | `!tt https://vt.tiktok.com/xxxx/` |
+| `!fb` | `!facebook` | Download video (Reels/Watch) or photo from Facebook | `!fb https://www.facebook.com/watch?v=xxxx` |
 | `!help` | - | Display interactive help menu | `!help` |
 
-> 💡 **Pro-tip:** Every media downloaded via `!ig`, `!tw`, or `!tt` can be instantly turned into a WhatsApp sticker by simply replying to the bot's media with `!sticker`!
+> 💡 **Pro-tip:** Every media downloaded via `!ig`, `!tw`, `!tt`, or `!fb` can be instantly turned into a WhatsApp sticker by simply replying to the bot's media with `!sticker`!
 
 ---
 

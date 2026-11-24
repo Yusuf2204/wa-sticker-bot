@@ -15,6 +15,8 @@ module.exports = {
       `  Download video, GIF, atau foto dari Twitter / X.\n\n` +
       `• *${p}tt <link>*\n` +
       `  Download video / slide TikTok tanpa watermark.\n\n` +
+      `• *${p}fb <link>*\n` +
+      `  Download video (Reels/Watch) atau foto Facebook.\n\n` +
       `• *${p}help*\n` +
       `  Menampilkan menu bantuan ini.\n\n` +
       `_💡 Tips: Reply media hasil download dengan ${p}sticker untuk dijadikan stiker!_`;
