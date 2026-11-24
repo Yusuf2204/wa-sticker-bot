@@ -2,16 +2,17 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const logger = require('../utils/logger.util');
-const { formatTargetDate } = require('../utils/time.util');
+const { formatTargetDate, TIMEZONE_MAP, TIMEZONE_ABBR } = require('../utils/time.util');
 
 const DATA_DIR = path.resolve(__dirname, '../../data');
 const DATA_FILE = path.join(DATA_DIR, 'reminders.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'user_settings.json');
 
 // Memory map of active timers: reminderId -> NodeJS.Timeout
 const activeTimers = new Map();
 
 /**
- * Ensure data directory and file exist
+ * Ensure data directory and files exist
  */
 function ensureStorage() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -19,6 +20,9 @@ function ensureStorage() {
   }
   if (!fs.existsSync(DATA_FILE)) {
     fs.writeFileSync(DATA_FILE, '[]', 'utf8');
+  }
+  if (!fs.existsSync(SETTINGS_FILE)) {
+    fs.writeFileSync(SETTINGS_FILE, '{}', 'utf8');
   }
 }
 
@@ -51,6 +55,63 @@ function saveReminders(list) {
 }
 
 /**
+ * Load user settings (e.g. timezone preferences)
+ * @returns {Object}
+ */
+function loadUserSettings() {
+  try {
+    ensureStorage();
+    const raw = fs.readFileSync(SETTINGS_FILE, 'utf8');
+    return JSON.parse(raw || '{}');
+  } catch (err) {
+    logger.error(`[REMINDER] Failed to load user settings: ${err.message}`);
+    return {};
+  }
+}
+
+/**
+ * Save user settings
+ * @param {Object} settings 
+ */
+function saveUserSettings(settings) {
+  try {
+    ensureStorage();
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
+  } catch (err) {
+    logger.error(`[REMINDER] Failed to save user settings: ${err.message}`);
+  }
+}
+
+/**
+ * Get preferred timezone for a user
+ * @param {string} userId 
+ * @returns {string} e.g. "Asia/Jakarta"
+ */
+function getUserTimezone(userId) {
+  const settings = loadUserSettings();
+  return settings[userId]?.timeZone || 'Asia/Jakarta';
+}
+
+/**
+ * Set preferred timezone for a user
+ * @param {string} userId 
+ * @param {string} tzKey - 'wib', 'wita', or 'wit'
+ * @returns {string|null} e.g. "Asia/Jakarta" or null if invalid
+ */
+function setUserTimezone(userId, tzKey) {
+  const cleanKey = tzKey.toLowerCase().trim();
+  const timeZone = TIMEZONE_MAP[cleanKey];
+  if (!timeZone) return null;
+
+  const settings = loadUserSettings();
+  if (!settings[userId]) settings[userId] = {};
+  settings[userId].timeZone = timeZone;
+  saveUserSettings(settings);
+
+  return timeZone;
+}
+
+/**
  * Trigger and send the reminder message to WhatsApp
  */
 async function triggerReminder(client, reminder) {
@@ -67,11 +128,28 @@ async function triggerReminder(client, reminder) {
   const updatedList = currentList.filter(r => r.id !== reminder.id);
   saveReminders(updatedList);
 
-  // 3. Susun pesan pengingat
-  const createdDateStr = formatTargetDate(reminder.createdAt);
-  let text =
+  // 3. Susun salam yang rapi & sopan (tanpa ID mentah @lid di chat pribadi)
+  let greeting = '';
+  if (reminder.isGroup) {
+    const mentionTag = reminder.phoneNumber ? `@${reminder.phoneNumber}` : `@${reminder.displayName || 'kamu'}`;
+    greeting = `Halo ${mentionTag}, ini pengingat kamu:`;
+  } else {
+    // Chat Pribadi
+    if (reminder.displayName && reminder.phoneNumber) {
+      greeting = `Halo *${reminder.displayName}* (+${reminder.phoneNumber}), ini pengingat kamu:`;
+    } else if (reminder.phoneNumber) {
+      greeting = `Halo *+${reminder.phoneNumber}*, ini pengingat kamu:`;
+    } else if (reminder.displayName) {
+      greeting = `Halo *${reminder.displayName}*, ini pengingat kamu:`;
+    } else {
+      greeting = `Halo, ini pengingat kamu:`;
+    }
+  }
+
+  const createdDateStr = formatTargetDate(reminder.createdAt, reminder.timeZone);
+  const text =
     `⏰ *PENGINGAT WAKTU TIBA!*\n\n` +
-    `Halo @${reminder.userId.replace('@c.us', '')}, ini pengingat kamu:\n\n` +
+    `${greeting}\n\n` +
     `📝 *Pesan:* ${reminder.message}\n` +
     `🕒 *Dipasang:* ${createdDateStr}\n\n` +
     `_Semoga harimu menyenangkan! ✨_`;
@@ -123,10 +201,20 @@ async function init(client) {
     if (reminder.targetTime <= now) {
       // Reminder terlewat saat bot offline
       logger.warn(`[REMINDER] Reminder #${reminder.id} missed while offline`);
-      const createdDateStr = formatTargetDate(reminder.targetTime);
+      const createdDateStr = formatTargetDate(reminder.targetTime, reminder.timeZone);
+      
+      let greeting = '';
+      if (reminder.isGroup) {
+        const mentionTag = reminder.phoneNumber ? `@${reminder.phoneNumber}` : `@${reminder.displayName || 'kamu'}`;
+        greeting = `Halo ${mentionTag},`;
+      } else {
+        const nameStr = reminder.displayName || (reminder.phoneNumber ? `+${reminder.phoneNumber}` : 'kamu');
+        greeting = `Halo *${nameStr}*,`;
+      }
+
       const missedText =
         `⚠️ *PENGINGAT TERLEWAT*\n\n` +
-        `Halo @${reminder.userId.replace('@c.us', '')}, pengingat ini seharusnya tiba pada:\n` +
+        `${greeting} pengingat ini seharusnya tiba pada:\n` +
         `🕒 ${createdDateStr}\n\n` +
         `📝 *Pesan:* ${reminder.message}\n\n` +
         `_Mohon maaf pengingat terlewat karena bot sempat offline atau sedang maintenance._`;
@@ -155,7 +243,7 @@ async function init(client) {
  * Add a new reminder
  * @returns {Object} reminder object
  */
-function addReminder({ client, userId, chatId, isGroup, message, targetTime }) {
+function addReminder({ client, userId, chatId, isGroup, message, targetTime, displayName, phoneNumber, timeZone }) {
   const list = loadReminders();
 
   // Buat ID singkat (4 karakter hex acak yang unik)
@@ -171,7 +259,10 @@ function addReminder({ client, userId, chatId, isGroup, message, targetTime }) {
     isGroup,
     message,
     createdAt: Date.now(),
-    targetTime
+    targetTime,
+    displayName: displayName || null,
+    phoneNumber: phoneNumber || null,
+    timeZone: timeZone || 'Asia/Jakarta'
   };
 
   list.push(reminder);
@@ -224,6 +315,8 @@ function cancelReminder(userId, reminderId) {
 
 module.exports = {
   init,
+  getUserTimezone,
+  setUserTimezone,
   addReminder,
   listReminders,
   cancelReminder

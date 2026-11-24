@@ -12,6 +12,7 @@ services:
 
     environment:
       NODE_ENV: production
+      TZ: Asia/Jakarta
       PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
 
     volumes:

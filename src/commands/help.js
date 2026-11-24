@@ -24,7 +24,8 @@ module.exports = {
       `  Pasang pengingat otomatis (maks 24 jam).\n` +
       `  _Contoh: \`${p}remind 15m Istirahat\` atau \`${p}remind 14:30 Jemput adik\`_\n` +
       `• *${p}remind list* — Lihat daftar pengingat aktif\n` +
-      `• *${p}remind cancel <id>* — Batalkan pengingat\n\n` +
+      `• *${p}remind cancel <id>* — Batalkan pengingat\n` +
+      `• *${p}remind tz <wib|wita|wit>* — Atur zona waktu\n\n` +
       `ℹ️ *UMUM & BANTUAN*\n` +
       `• *${p}help*\n` +
       `  Menampilkan daftar menu bantuan ini.\n\n` +

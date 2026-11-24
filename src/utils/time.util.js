@@ -1,19 +1,62 @@
 /**
  * Time utility for Reminder Bot
  * Supports durations (s, m, h, j, d, detik, menit, jam, hari) and clock times (HH:mm)
+ * Multi-timezone support (WIB, WITA, WIT)
  * Strictly constrained to a maximum of 24 hours (1 day).
  */
 
 const MAX_DURATION_MS = 24 * 60 * 60 * 1000; // 24 jam dalam milidetik
 const MIN_DURATION_MS = 5 * 1000; // Minimal 5 detik
 
+const TIMEZONE_MAP = {
+  wib: 'Asia/Jakarta',
+  wita: 'Asia/Makassar',
+  wit: 'Asia/Jayapura'
+};
+
+const TIMEZONE_ABBR = {
+  'Asia/Jakarta': 'WIB',
+  'Asia/Makassar': 'WITA',
+  'Asia/Jayapura': 'WIT'
+};
+
+const TIMEZONE_OFFSETS = {
+  'Asia/Jakarta': 7 * 3600000,
+  'Asia/Makassar': 8 * 3600000,
+  'Asia/Jayapura': 9 * 3600000
+};
+
+/**
+ * Calculate target timestamp from HH:mm in specific timezone
+ */
+function getTargetTimestamp(hours, minutes, isTomorrow = false, timeZone = 'Asia/Jakarta') {
+  const now = new Date();
+  const dtf = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const [year, month, day] = dtf.format(now).split('-').map(Number);
+  const offsetMs = TIMEZONE_OFFSETS[timeZone] || (7 * 3600000);
+  const todayMidnightUtc = Date.UTC(year, month - 1, day) - offsetMs;
+  let targetTime = todayMidnightUtc + (hours * 3600 + minutes * 60) * 1000;
+
+  if (isTomorrow) {
+    targetTime += 24 * 3600000;
+  } else if (targetTime <= now.getTime() + MIN_DURATION_MS) {
+    targetTime += 24 * 3600000;
+  }
+  return targetTime;
+}
+
 /**
  * Parse time input string into target timestamp and remaining milliseconds
- * @param {string} timeStr - e.g. "10m", "2h", "14:30", "besok 08:00", "45s"
- * @param {string} [nextArg] - optional next argument if user typed "besok 08:00"
- * @returns {{ targetTime: number, durationMs: number, consumedArgs: number, error?: string }}
+ * @param {Array<string>} args - Command arguments
+ * @param {string} defaultTimezone - e.g. "Asia/Jakarta"
+ * @returns {{ targetTime: number, durationMs: number, consumedArgs: number, timeZone: string, error?: string }}
  */
-function parseReminderTime(args) {
+function parseReminderTime(args, defaultTimezone = 'Asia/Jakarta') {
   if (!args || args.length === 0) {
     return { error: 'Waktu pengingat tidak boleh kosong.' };
   }
@@ -21,19 +64,25 @@ function parseReminderTime(args) {
   const now = Date.now();
   const first = args[0].toLowerCase().trim();
   const second = args[1] ? args[1].toLowerCase().trim() : '';
+  const third = args[2] ? args[2].toLowerCase().trim() : '';
 
-  // 1. Cek format "besok HH:mm" (misal: "besok 08:00" atau "besok 08.00")
+  // 1. Cek format "besok HH:mm [tz]" (misal: "besok 08:00" atau "besok 08:00 wita")
   if ((first === 'besok' || first === 'tomorrow') && second) {
     const timeMatch = second.match(/^([01]?[0-9]|2[0-3])[:.]([0-5][0-9])$/);
     if (timeMatch) {
       const hours = parseInt(timeMatch[1], 10);
       const minutes = parseInt(timeMatch[2], 10);
 
-      const target = new Date(now);
-      target.setDate(target.getDate() + 1);
-      target.setHours(hours, minutes, 0, 0);
+      let targetTimezone = defaultTimezone;
+      let consumedArgs = 2;
+      if (third && TIMEZONE_MAP[third]) {
+        targetTimezone = TIMEZONE_MAP[third];
+        consumedArgs = 3;
+      }
 
-      const diff = target.getTime() - now;
+      const targetTime = getTargetTimestamp(hours, minutes, true, targetTimezone);
+      const diff = targetTime - now;
+
       if (diff > MAX_DURATION_MS) {
         return { error: 'Waktu pengingat melebihi batas maksimal 24 jam (1 hari).' };
       }
@@ -42,28 +91,30 @@ function parseReminderTime(args) {
       }
 
       return {
-        targetTime: target.getTime(),
+        targetTime,
         durationMs: diff,
-        consumedArgs: 2
+        consumedArgs,
+        timeZone: targetTimezone
       };
     }
   }
 
-  // 2. Cek format jam spesifik "HH:mm" (misal: "14:30", "08.00")
+  // 2. Cek format jam spesifik "HH:mm [tz]" (misal: "14:30", "14:30 wita", "08.00")
   const clockMatch = first.match(/^([01]?[0-9]|2[0-3])[:.]([0-5][0-9])$/);
   if (clockMatch) {
     const hours = parseInt(clockMatch[1], 10);
     const minutes = parseInt(clockMatch[2], 10);
 
-    const target = new Date(now);
-    target.setHours(hours, minutes, 0, 0);
-
-    // Jika waktu tersebut sudah lewat hari ini, jadwalkan untuk besok di jam yang sama
-    if (target.getTime() <= now + MIN_DURATION_MS) {
-      target.setDate(target.getDate() + 1);
+    let targetTimezone = defaultTimezone;
+    let consumedArgs = 1;
+    if (second && TIMEZONE_MAP[second]) {
+      targetTimezone = TIMEZONE_MAP[second];
+      consumedArgs = 2;
     }
 
-    const diff = target.getTime() - now;
+    const targetTime = getTargetTimestamp(hours, minutes, false, targetTimezone);
+    const diff = targetTime - now;
+
     if (diff > MAX_DURATION_MS) {
       return { error: 'Waktu pengingat melebihi batas maksimal 24 jam (1 hari).' };
     }
@@ -72,13 +123,14 @@ function parseReminderTime(args) {
     }
 
     return {
-      targetTime: target.getTime(),
+      targetTime,
       durationMs: diff,
-      consumedArgs: 1
+      consumedArgs,
+      timeZone: targetTimezone
     };
   }
 
-  // 3. Cek format durasi relatif (misal: "10m", "2h", "30s", "1j", "15menit", "2jam")
+  // 3. Cek format durasi relatif (misal: "10m", "2j", "30s", "15menit", "2jam")
   const durationMatch = first.match(/^(\d+)\s*(s|sec|detik|m|min|menit|h|j|jam|hour|d|hari|day)$/i);
   if (durationMatch) {
     const value = parseInt(durationMatch[1], 10);
@@ -102,10 +154,18 @@ function parseReminderTime(args) {
       return { error: 'Waktu pengingat terlalu singkat (minimal 5 detik).' };
     }
 
+    let targetTimezone = defaultTimezone;
+    let consumedArgs = 1;
+    if (second && TIMEZONE_MAP[second]) {
+      targetTimezone = TIMEZONE_MAP[second];
+      consumedArgs = 2;
+    }
+
     return {
       targetTime: now + diff,
       durationMs: diff,
-      consumedArgs: 1
+      consumedArgs,
+      timeZone: targetTimezone
     };
   }
 
@@ -116,7 +176,8 @@ function parseReminderTime(args) {
       `• *10m* (10 menit)\n` +
       `• *2j* atau *2h* (2 jam)\n` +
       `• *30s* (30 detik)\n` +
-      `• *14:30* (jam 14:30 hari ini/besok)\n` +
+      `• *14:30* (jam 14:30 WIB)\n` +
+      `• *14:30 wita* (jam 14:30 WITA)\n` +
       `_(Maksimal durasi 24 jam)_`
   };
 }
@@ -141,43 +202,55 @@ function formatRemaining(ms) {
 }
 
 /**
- * Format timestamp into Indonesian friendly date/time
+ * Format timestamp into Indonesian friendly date/time with timezone
  * @param {number} timestamp 
- * @returns {string} e.g. "Hari ini, 14:30 WIB" atau "Besok, 08:00 WIB"
+ * @param {string} [timeZone='Asia/Jakarta']
+ * @returns {string} e.g. "Hari ini, pukul 14:30 WIB" atau "Besok, pukul 08:00 WIB"
  */
-function formatTargetDate(timestamp) {
-  const target = new Date(timestamp);
-  const now = new Date();
+function formatTargetDate(timestamp, timeZone = 'Asia/Jakarta') {
+  const tzAbbr = TIMEZONE_ABBR[timeZone] || 'WIB';
 
-  const isToday =
-    target.getDate() === now.getDate() &&
-    target.getMonth() === now.getMonth() &&
-    target.getFullYear() === now.getFullYear();
+  const dtfTime = new Intl.DateTimeFormat('id-ID', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const timeStr = `${dtfTime.format(new Date(timestamp)).replace('.', ':')} ${tzAbbr}`;
 
-  const tomorrow = new Date(now);
+  const dtfDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const targetDateStr = dtfDate.format(new Date(timestamp));
+  const nowDateStr = dtfDate.format(new Date());
+
+  const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const isTomorrow =
-    target.getDate() === tomorrow.getDate() &&
-    target.getMonth() === tomorrow.getMonth() &&
-    target.getFullYear() === tomorrow.getFullYear();
+  const tomorrowDateStr = dtfDate.format(tomorrow);
 
-  const pad = n => String(n).padStart(2, '0');
-  const timeStr = `${pad(target.getHours())}:${pad(target.getMinutes())} WIB`;
-
-  if (isToday) {
+  if (targetDateStr === nowDateStr) {
     return `Hari ini, pukul ${timeStr}`;
   }
-  if (isTomorrow) {
+  if (targetDateStr === tomorrowDateStr) {
     return `Besok, pukul ${timeStr}`;
   }
 
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-  return `${target.getDate()} ${months[target.getMonth()]}, pukul ${timeStr}`;
+  const dtfFull = new Intl.DateTimeFormat('id-ID', {
+    timeZone,
+    day: 'numeric',
+    month: 'short'
+  });
+  return `${dtfFull.format(new Date(timestamp))}, pukul ${timeStr}`;
 }
 
 module.exports = {
   MAX_DURATION_MS,
   MIN_DURATION_MS,
+  TIMEZONE_MAP,
+  TIMEZONE_ABBR,
   parseReminderTime,
   formatRemaining,
   formatTargetDate
