@@ -12,11 +12,13 @@ services:
 
     environment:
       NODE_ENV: production
+      TZ: Asia/Jakarta
       PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
 
     volumes:
       - ./.wwebjs_auth:/app/.wwebjs_auth
       - ./temp:/app/temp
+      - ./data:/app/data
       - ./src:/app/src
 
     mem_limit: 1536m

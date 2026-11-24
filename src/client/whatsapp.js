@@ -2,6 +2,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const logger = require('../utils/logger.util');
 const { patchUtilsOnDisk, injectBrowserPatch } = require('../utils/patch.util');
+const reminderService = require('../services/reminder.service');
 const fs = require('fs');
 const path = require('path');
 
@@ -111,6 +112,7 @@ function initWhatsApp() {
       logger.warn(`[MODAL] Error dismissing modals on ready: ${e.message}`);
     }
     await injectBrowserPatch(client);
+    await reminderService.init(client);
 
     // Periodically check and dismiss modals (like Use Here or update banners)
     setInterval(async () => {
