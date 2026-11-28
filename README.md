@@ -12,6 +12,7 @@ A multi-purpose bot designed for high reliability: automatically converts **imag
 * ✅ **Image → Static Sticker** (Auto resize `512x512`, WebP conversion, alpha/transparency preserved)
 * ✅ **GIF / Video → Animated Sticker** (Adaptive FFmpeg compression `<800KB`, FPS optimization)
 * ✅ **Custom Sticker Metadata** (Set custom Pack Name & Author: `!sticker MyPack | MyAuthor`)
+* ✅ **Batch Sticker Mode (`!sticker batch`)** (Convert up to 5 images/videos at once via album caption or interactive session)
 * ✅ **Reply / Quoted Media Support** (Reply any media or downloaded post to make a sticker)
 
 ### 📥 Social Media Downloader
@@ -69,6 +70,7 @@ A multi-purpose bot designed for high reliability: automatically converts **imag
 | Command | Alias | Description | Example |
 | :--- | :--- | :--- | :--- |
 | `!sticker` | - | Convert image / GIF / video into sticker | `!sticker Pack | Author` *(or reply media)* |
+| `!sticker batch` | `!sticker stop` | Batch convert up to 5 media items into stickers | `!sticker batch` *(album caption or session)* |
 | `!ig` | `!instagram` | Download Reels, video, or photo carousel | `!ig https://instagram.com/p/xxxx` |
 | `!tw` | `!twitter`, `!x` | Download video, GIF, or photo from Twitter / X | `!tw https://x.com/user/status/xxxx` |
 | `!tt` | `!tiktok` | Download video (No Watermark) or photo slide | `!tt https://vt.tiktok.com/xxxx/` |
