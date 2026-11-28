@@ -9,7 +9,10 @@ module.exports = {
       `🎨 *STICKER MAKER*\n` +
       `• *${p}sticker*\n` +
       `  Buat stiker dari gambar, GIF, atau video (kirim/reply media).\n` +
-      `  _Format kustom: \`${p}sticker NamaPack | NamaAuthor\`_\n\n` +
+      `  _Format kustom: \`${p}sticker NamaPack | NamaAuthor\`_\n` +
+      `• *${p}sticker batch*\n` +
+      `  Buat banyak stiker sekaligus (maks 5 gambar/video).\n` +
+      `  _Ketik \`${p}sticker stop\` untuk mengakhiri sesi batch._\n\n` +
       `📥 *MEDIA DOWNLOADER*\n` +
       `• *${p}ig <link>*\n` +
       `  Download Reels, video, dan foto carousel Instagram.\n` +

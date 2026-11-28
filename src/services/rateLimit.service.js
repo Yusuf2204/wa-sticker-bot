@@ -20,6 +20,12 @@ class RateLimitService {
     
     // No record yet
     if (!record) {
+      this.limits.set(userId, {
+        count: 1,
+        resetTime: now + this.windowMs,
+        timestamps: [now]
+      });
+
       return {
         allowed: true,
         remaining: this.maxRequests - 1,
